@@ -1,0 +1,68 @@
+# Plot variable cluster first
+# VAriables selection by Varclus
+library(Hmisc)
+#### setting working directory
+setwd("w:/Assamese subspecies level niche compare/R works")
+
+# Import file with predictor extracted data and lat/long
+# Presence file
+# CHELSA
+presence.df1<- read.csv("Combined presence point.csv")
+pseuabs.df1<- read.csv("randompoints 5km dist.csv")
+lattice.df1<- read.csv("lattice.csv")
+names(lattice.df1)
+
+# Worldclim
+presence.df<- read.csv("worldclim_combined_presence.csv")
+pseuabs.df<- read.csv("worldclim_ass_random_points_5km.csv")
+lattice.df<- read.csv("worldclim_lattice_3_arc_min.csv")
+names(lattice.df)
+
+# Extarct data from CHELSA file
+pre.df<-(presence.df1[,c(3,4,6:27)])
+pse.df<-(pseuabs.df1[,c(3,4,6:27)])
+#PA.df<- lattice.df1[,c(3,4,6:27)]
+
+# Extract data from Wordclim file
+pre.df<-presence.df[,3:26]
+pse.df<-pseuabs.df[, 3:26]
+# PA.df<-lattice.df[, 3:26]
+
+# Repeat here for each data set
+PA.df<- rbind(pre.df,pse.df)
+dim(PA.df)
+#PA.m<-as.matrix(PA.df)
+#names(PA.df)
+# data should be prepared as below
+PA.m1<- cbind(PA.df[,1], PA.df[,2], PA.df[,3], PA.df[,4], PA.df[,5], PA.df[,6], 
+              PA.df[,7], PA.df[,8], PA.df[,9], PA.df[,10], PA.df[,11], PA.df[,12], 
+              PA.df[,13], PA.df[,14], PA.df[,15], PA.df[,16], PA.df[,17], PA.df[,18], 
+              PA.df[,19], PA.df[,20], PA.df[,21], PA.df[,22], PA.df[,23], PA.df[,24] )
+head(PA.m1)
+colnames(PA.m1)<-names(PA.df)
+
+#CHELSA
+var.sel<-varclus(PA.m1, similarity=c("spearman"), type=c("data.matrix"),method="complete",trans="none")
+var.sel
+x11()
+plot(var.sel)
+
+#worldclim
+var.sel1<-varclus(PA.m1, similarity=c("spearman"), type=c("data.matrix"),method="complete",trans="none")
+var.sel1
+x11()
+plot(var.sel1)
+
+
+#
+tiff(filename = "W:/Assamese subspecies level niche compare/R works/Var Cluster plot CHELSA Worldclim1.tiff", 
+     width = 4000, height = 2500, res=500, compression = "lzw")
+
+par(mfrow = c(1,2),
+    oma = c(.5,0.5,0.2,0.2) + 0.1,
+    mar = c(0,4,0.5,0.5) + 0.1)
+plot(var.sel)
+text(1,1.9, "(A)")
+plot(var.sel1)
+text(1,1.9, "(B)")
+dev.off()
