@@ -1,0 +1,50 @@
+# Load libraries
+library(sdm)
+library(raster)
+library(rgdal)
+library(usdm)
+library(dismo)
+library(sp)
+
+# CHELSA predictors
+env.files <- list.files(path = "F:/Assamese Macaca model/ASCII masked variables",
+                        pattern = "\\.asc$", full.names = TRUE)
+# Prepare a Stack of Env variables
+env.var <- stack(env.files)
+env.var
+env.var <- setMinMax(env.var)
+env.var
+names(env.var)
+
+# Check VIF
+env.vif<- vif(env.var)   
+
+# Select a memeber based on VIF low value from each cluster (first previous plot)
+env.var1<-env.var[[c("bio15", "elev", "bio02", "bio04",
+                     "bio19", "bio14", "bio18", "bio12", "bio13", "aspect", 
+                     "eq", "bio03", 
+                     "bio05", "bio08", "bio09", "abt", "bio11")]]
+# at threshold 5
+vifstep(env.var1, th=5) 
+
+################
+#### Worldclim Predictors
+env.files <- list.files(path = "F:/Assamese Macaca model/Worldclim CC and FC 28 June/ASCII",
+                        pattern = "\\.asc$", full.names = TRUE)
+
+# Prepare a Stack of Env variables
+env.var <- stack(env.files)
+env.var
+env.var <- setMinMax(env.var)
+env.var
+names(env.var)
+
+# Check VIF
+env.vif<- vif(env.var)   
+
+# Select a memeber based on VIF low value from each cluster
+env.var1<-env.var[[c("bio14", "bio19", "bio18","bio12", "bio13", 
+                     "bio03", "bio08","bio10", "bio09", "abt", "bio11",
+                     "bio04", "bio02", "eq", "aspect")]]
+# at threshold 5
+vifstep(env.var1, th=5) 
