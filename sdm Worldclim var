@@ -1,0 +1,272 @@
+# Species Distribution Modeling with package "sdm"
+# required
+library(sdm)
+library(raster)
+library(rgdal)
+library(usdm)
+library(dismo)
+options(java.parameters = "-Xmx5g" ) # set memory
+#==============
+# only run if the maxent.jar file is available, in the right folder
+#jar <- paste(system.file(package="dismo"), "/java/maxent.jar", sep='')
+############
+
+#### setting working directory
+setwd("w:/Assamese subspecies level niche compare/R works")
+
+# Import file with predictor extracted data and lat/long
+# Presence file
+presence.df<- read.csv("worldclim_combined_presence.csv")
+pseuabs.df<- read.csv("worldclim_ass_random_points_5km.csv")
+lattice.df<- read.csv("worldclim_lattice_3_arc_min.csv")
+lattice70s.df<- read.csv("lattice_3_arc__min_2070s.csv") # bio01 to bio11 needs to divide by 10
+
+#=====================
+dim(lattice.df)
+dim(lattice70s.df)
+
+# There are different number of lattice points in CC and FC lattices
+# let keep only common ones from both of them to make consistent 
+library(data.table)
+keys <- c("lat", "long") # intersenct by Lat/Long, both must be commong in two lattice files
+lat1 <-data.table(lattice.df, key=keys)
+lat70s1<- data.table(lattice70s.df, key=keys)
+lat1 [lat70s1, Bounced:=1L]
+
+lattice.df<- lat1[Bounced==1]
+lattice.df$Bounced <-NULL
+dim(lattice.df)
+dim(lattice70s.df)
+
+rm(lat1, lat70s1, keys) # delete unncessary files
+#===================================
+
+# Check the data
+summary(presence.df)
+summary(pseuabs.df)
+summary(lattice.df)
+summary(lattice70s.df)
+
+# Check the sequence of variables
+names(presence.df)
+names(pseuabs.df)
+names(lattice.df)
+names(lattice70s.df)
+
+#==========================================
+  #### Part 2 Data Preparation ####
+# Add Presence Absence type column
+presence.df$PA<- 1  # presence column
+pseuabs.df$PA <- 0  # absence colunm
+
+dim(presence.df)
+dim(pseuabs.df)
+
+# Seperate into two populations
+AE.df<- presence.df[presence.df$pop == "east pop",]  
+AW.df<- presence.df[presence.df$pop == "west pop", ]  
+
+# remove Population column
+AE.df$pop <- NULL
+AW.df$pop <- NULL
+
+# Combine with pseudoabsence 
+spAE.df<- rbind(AE.df,pseuabs.df) # pseuabs.Ep)  # East Pop with EAST pseudoabsence
+spWE.df<- rbind(AW.df,pseuabs.df) # pseuabs.Wp)  # West Pop with WEST pseudoabsence
+
+# Explore data
+table(spAE.df$PA)  # ratio of presence and pseudoabsence
+table(spWE.df$PA)
+
+# Remove any NA in dataframe
+spAE.df<-spAE.df[complete.cases(spAE.df),]
+spWE.df<-spWE.df[complete.cases(spWE.df),]
+
+# extrac bioclim variable only
+names(spAE.df)
+# Cluster and VIF threshold 5 selected variables 
+# from Worldclim
+#( "aspect","bio02", "bio03","bio09","bio13", "bio14", "bio18", "bio19","eq", "PA" )
+var.sel<-c("aspect","bio02", "bio03","bio09","bio13", "bio14", "bio18", "bio19","eq", "PA" )
+spAE.df1<- spAE.df[, paste(var.sel)]
+spWE.df1<- spWE.df[, paste(var.sel)]
+
+names(spAE.df1)
+dim(spAE.df1)
+
+# Extracing only predictor variables columns and Presence Absence 
+names(spAE.df1)
+varAE.data<- spAE.df1[,1:10]  
+varWE.data<- spWE.df1[,1:10]
+dim(varAE.data)
+names(varAE.data)
+#========================================
+  
+# Extract Lat/Long
+names(lattice.df)
+lat.long<- lattice.df[, 1:2] # extract only Lat and Long to combine latter
+lattice1.df<-data.frame(lattice.df[, c("aspect","bio02", "bio03","bio09","bio13", "bio14", "bio18", "bio19","eq")]) # remove lat/long
+names(lattice1.df)
+dim(lattice1.df)
+
+# Extract Lat/long Future lattice
+names(lattice70s.df)
+lat.long70s<- lattice70s.df[,1:2]
+lattice70s1.df<- data.frame (lattice70s.df[,c("aspect","bio02", "bio03","bio09","bio13", "bio14", "bio18", "bio19","eq") ])
+dim(lattice70s1.df)
+
+
+#======================
+##### Part 3 Model Preparation ####
+# EAST population
+dt.E<-sdmData(train=varAE.data) # only after unnecessory columns are removed
+dt.E
+# WEST Population
+dt.W<-sdmData(train=varWE.data) #only when unnecessory columns are removed
+dt.W
+
+# Separat Models
+# East Pop Models
+AE.mx<-  sdm(PA~., data=dt.E,  methods = c("max"), replication='cv', test.percent=30, n = 10, "betamultiplier=1.0")
+AE.rf<-  sdm(PA~., data=dt.E,  methods = c("rf") , replication='cv', test.percent=30, n = 10, oob=TRUE)
+
+# West Pop Models
+WE.mx<-  sdm(PA~., data=dt.W,  methods = c("max"), replication='cv', test.percent=30, n = 10, "betamultiplier=0.5")
+WE.rf<-  sdm(PA~., data=dt.W,  methods = c("rf") , replication='cv', test.percent=30, n = 10, oob=TRUE)
+
+m.names<-c(AE.mx, AE.rf, WE.mx, WE.rf)
+#===================================
+
+# Model Summary export 
+for(m in m.names){
+  write.table((data.frame(capture.output(m))), file = "Worldclim CC and FC August 8/Model summary Population.doc", append = TRUE, quote=F)
+}
+# 
+
+# To store prediction
+CC<-data.frame(lat.long)
+FC70s<-data.frame(lat.long70s)
+# Prediction loop
+for(m in m.names){
+  CC[, ncol(CC)+1]         <- predict(m, newdata=lattice1.df, mean=TRUE)
+  FC70s[, (ncol(FC70s)+1)] <- predict(m, newdata=lattice70s1.df, mean=TRUE)
+}
+colnames(CC)[1:6]<- c("lat", "long", "E.avgMX", "E.avgRF", "W.avgMX", "W.avgRF")
+colnames(FC70s)[1:6]<- c("lat", "long", "E.avgMX", "E.avgRF", "W.avgMX", "W.avgRF")
+
+
+# Rescale predicte to 0 to 1
+CC.pred1.res<-data.frame(lat.long)
+FC70s.pred1.res<-data.frame(lat.long70s)
+for(i in 3:6){  # 3:6 is where the average values are stored
+  CC.pred1.res[, i]   <- ((CC[,i] - min(CC[,i])) * 1/ (max(CC[,i]) - min(CC[,i]))+0)
+  FC70s.pred1.res[, i]<- ((FC70s[, i] - min(FC70s[, i])) * 1/ (max(FC70s[, i]) - min(FC70s[, i]))+0)
+}
+# Rename columns, NOTE Names order must be as in the "m.names" file
+colnames(CC.pred1.res)[1:6]<- c("lat", "long", "E.avgMX", "E.avgRF", "W.avgMX", "W.avgRF")
+colnames(FC70s.pred1.res)[1:6]<- c("lat", "long", "E.avgMX", "E.avgRF", "W.avgMX", "W.avgRF")
+head(CC.pred1.res)
+head(FC70s.pred1.res)
+
+summary(CC.pred1.res)
+summary(FC70s.pred1.res)
+
+#F:\Assamese Macaca model\Distance 200km Buffer pseudo bioclim only
+write.csv(CC, file= "Worldclim CC and FC August 8/East and West pop CC prediction.csv")
+write.csv(FC70s, file= "Worldclim CC and FC August 8/East and West pop FC prediction.csv")
+# rescaled
+write.csv(CC.pred1.res, file= "Worldclim CC and FC August 8/East and West pop CC_rescale prediction.csv")
+write.csv(FC70s.pred1.res, file= "Worldclim CC and FC August 8/East and West pop FC_rescale prediction.csv")
+
+
+#===================================================
+# Variable importance
+getVarImp(AE.mx, id=1)
+
+aucTest.df<- data.frame()
+corTest.df<- data.frame()
+getVarImp(AE.mx, id=1)-> impVar # To extract variable names
+data.frame(impVar@varImportance)->varIMp
+# Creat a data frame with variabel names
+corTest.df <- data.frame(VarName= varIMp[,1])
+aucTest.df <- data.frame(VarName= varIMp[,1])
+
+corTest.All<- corTest.df
+aucTest.All<- aucTest.df
+# Store names in an object
+m.names<- c(AE.mx, AE.rf, WE.mx, WE.rf)   
+
+# Extract Var Imp from all models, all replication and average the replications 
+for (m in m.names){     # for Each Models 
+  corTest<- corTest.df
+  aucTest<- aucTest.df
+  for(i in 1:10){       # for each replicaiton 
+    getVarImp(m,id=i)-> impVar.i
+    # Change file name
+    corTest[, ncol(corTest)+1] <-    impVar.i@varImportance$corTest
+    # Change file name
+    aucTest[, ncol(aucTest)+1] <-    impVar.i@varImportance$AUCtest 
+  }
+  # take Average from all replicaiton for Each Momdel
+  corTest.All[,ncol(corTest.All)+1]<- rowMeans(corTest[, 2:ncol(corTest)]) 
+  aucTest.All[,ncol(aucTest.All)+1]<- rowMeans(aucTest[, 2:ncol(aucTest)])
+}
+
+colnames(corTest.All)<- c("VarName","E.MX", "E.RF", "W.MX", "W.RF")
+colnames(aucTest.All)<- c("VarName","E.MX", "E.RF", "W.MX", "W.RF")
+# Check the Var Imp files and export 
+corTest.All
+aucTest.All
+write.csv(corTest.All, file= "Worldclim CC and FC August 8/Var Imp COR Test East and West.csv")
+write.csv(aucTest.All, file= "Worldclim CC and FC August 8/Var Imp AUC Test East and West.csv")
+
+#==========================================
+# Var Imp plot 
+summary(aucTest.All)
+
+tiff(filename = "Worldclim CC and FC August 8/Var Immp model wise EAST WEST Pop.tiff", 
+     width = 2000, height = 2500, res=400, compression = "lzw")
+par(mfrow = c(2,1),
+    oma = c(5,0.5,0,0) + 0.1,
+    mar = c(0,5,0.5,0.5) + 0.1)
+#par(mar=c(0,5,1,1))
+# Var Imp East
+plot (aucTest.All$E.MX,  type="b", lty=0, pch=15, labels=F, ylim=c(0, 0.4), col=3, 
+      xlab="Variables", ylab="Variable Importance \n based on AUC test score")
+lines(aucTest.All$E.RF,  type="b", lty=0, pch= 5, labels=F, ylim=c(0, 0.4), col=2)
+
+axis(2, at=c(0, 0.2, 0.4, 0.6, 0.8, 1.0), labels=c(0, 0.2, 0.4, 0.6, 0.8, 1.0))
+#axis(1, at=1:21, labels=aucTest.All$VarName, las=2 )
+text(1,0.4, labels = "(A)")
+legend("topright", lty=c(4,5),pch=c(3, 5), bty="n", col=c(1,2),
+       legend=c("MX", "RF"))
+
+# Var Imp West
+plot (aucTest.All$W.MX,  type="b", lty=0, pch=15, labels=F, ylim=c(0, 0.4), col=3, 
+      xlab="Variables", ylab="Variable Importance \n based on AUC test score")
+lines(aucTest.All$W.RF,  type="b", lty=0, pch= 5, labels=F, ylim=c(0, 0.4), col=2)
+
+axis(2, at=c(0, 0.2, 0.4, 0.6, 0.8, 1.0), labels=c(0, 0.2, 0.4, 0.6, 0.8, 1.0))
+axis(1, at=1:nrow(aucTest.All), labels=aucTest.All$VarName, las=2 )
+text(1,0.4, labels = "(B)")
+mtext("Variables", side = 1, line= 4 )
+
+dev.off()
+#===============================
+
+# ROC curves 
+# Both East and West pop
+tiff(filename = "Worldclim CC and FC August 8/ROC plot East West combined Pop.tiff", 
+     width = 2000, height = 2000, res=300, compression = "lzw")
+roc(AE.mx,  smooth=TRUE,  wtest="test", legend= FALSE, col=1, lty=0)
+par(new=T); roc(AE.rf,  smooth=TRUE,  wtest="test", legend= FALSE, col=2, lty=0)
+
+par(new=T); roc(WE.mx,  smooth=TRUE,  wtest="test", legend= FALSE, col=1, lty=0)
+par(new=T); roc(WE.rf,  smooth=TRUE,  wtest="test", legend= FALSE, col=2, lty=0)
+
+text(0.17, 0.7, "MAA")
+text(0.06, 0.95, "MAP")
+legend("bottomright",  lty=1, lwd=1, bty="n", col=c( 1,2), legend=c("MX", "RF"))
+dev.off()
+
+
