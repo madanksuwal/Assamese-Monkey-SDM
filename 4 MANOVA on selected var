@@ -1,0 +1,30 @@
+# Working directory
+setwd("w:/Assamese subspecies level niche compare/R works")
+
+# Import file with predictor extracted data
+# Presence file
+pre.chelsa<- read.csv("Combined presence point.csv")          # CHELSA predictors
+pre.worldclim<- read.csv("worldclim_combined_presence.csv")   # Worldclim Predictors
+names(pre.chelsa)
+
+# for MANOVA Test
+# Selected variables from Cluster analysis and VIF method
+# From CHELSA predictors
+var.che<-c("aspect", "bio03","bio08","bio13", "bio14","bio15", "bio18", "bio19", "eq", "pop" ) 
+# From Worldclim predictors
+var.wlc<-c("aspect","bio02", "bio03","bio09","bio13", "bio14", "bio18", "bio19","eq","pop"  )
+
+# Extract required variables only
+df.che<- pre.chelsa[, paste(var.che)]
+head(df.che)
+df.wlc<- pre.worldclim[, paste(var.wlc)]
+
+# Fit MANOVA on  both data sets
+fit.che<- manova(cbind(aspect,bio03,bio08,bio13,bio14,bio15,bio18,bio19,eq)~ df.che$pop, data=df.che)
+summary(fit.che)
+
+fit.wlc<- manova(cbind(aspect,bio02,bio03,bio09,bio13,bio14,bio18,bio19,eq)~ df.wlc$pop, data=df.wlc)
+summary(fit.wlc)
+
+
+# END
